@@ -34,9 +34,12 @@ app.use(express.json());
 // API key check
 app.use((req, res, next) => {
     const key = req.headers["x-api-key"];
+    console.log("Received key:", key);
+    console.log("Expected key:", process.env.API_KEY);
     if (key !== process.env.API_KEY) {
         return res.status(403).json({ error: "Forbidden" });
     }
+
     next();
 });
 
