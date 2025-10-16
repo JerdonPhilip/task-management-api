@@ -1,7 +1,7 @@
 
+
 ```
 task-management-api
-├─ .env
 ├─ docs
 │  └─ API.md
 ├─ package-lock.json
@@ -15,6 +15,10 @@ task-management-api
 │  │  ├─ taskController.js
 │  │  └─ userController.js
 │  ├─ data
+│  │  ├─ gameState.json
+│  │  ├─ jerdon1023_tasks.json
+│  │  ├─ tasks.json
+│  │  └─ users.json
 │  ├─ middleware
 │  │  ├─ auth.js
 │  │  ├─ cors.js
