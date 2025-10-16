@@ -3,16 +3,15 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
+import apiKeyMiddleware from "./middleware/apiKeyMiddleware.js";
 import router from "./routes/index.js";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3002;
 
-// allow both local and production frontend
 const allowedOrigins = ["http://localhost:5173", "https://jerdonphilip.github.io"];
 
 app.use(helmet());
-
 app.use(
     cors({
         origin: (origin, callback) => {
@@ -27,23 +26,11 @@ app.use(
         credentials: true
     })
 );
-
 app.use(morgan("dev"));
 app.use(express.json());
 
-// API key check
-app.use((req, res, next) => {
-    const key = req.headers["x-api-key"];
-    console.log("Received key:", key);
-    console.log("Expected key:", process.env.API_KEY);
-    if (key !== process.env.API_KEY) {
-        return res.status(403).json({ error: "Forbidden" });
-    }
-
-    next();
-});
-
-app.use("/api", router);
+// Protect all /api routes
+app.use("/api", apiKeyMiddleware, router);
 
 app.get("/", (req, res) => {
     res.json({ message: "Welcome to Task Management RPG API" });
