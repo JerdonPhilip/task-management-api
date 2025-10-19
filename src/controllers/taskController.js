@@ -1,5 +1,39 @@
 import { readUserTasks, writeUserTasks, getUser, createUser, validateCredentials } from "../config/database.js";
 import { calculateQuestReward } from "../utils/gameLogic.js";
+import { readJSONAsync, writeJSONAsync } from "../config/database.js";
+
+// Get all tasks for one player
+export const getTasks = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const fileName = `${userId}_tasks`;
+
+        const tasks = await readJSONAsync(fileName);
+        res.json(tasks);
+    } catch (error) {
+        console.error("Error reading tasks:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
+
+// Add or update tasks for one player
+export const saveTasks = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const fileName = `${userId}_tasks`;
+        const tasks = req.body;
+
+        if (!Array.isArray(tasks)) {
+            return res.status(400).json({ error: "Invalid tasks format" });
+        }
+
+        await writeJSONAsync(fileName, tasks);
+        res.json({ message: "Tasks saved successfully" });
+    } catch (error) {
+        console.error("Error saving tasks:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+};
 
 // Authentication middleware
 export const authenticateUser = (req, res, next) => {
@@ -69,18 +103,6 @@ export const loginUser = (req, res) => {
         res.json(userWithoutPassword);
     } catch (error) {
         console.error("Error in loginUser:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-};
-
-// Get tasks for specific user
-export const getTasks = (req, res) => {
-    try {
-        const username = req.params.username;
-        const tasks = readUserTasks(username);
-        res.json(tasks);
-    } catch (error) {
-        console.error("Error in getTasks:", error);
         res.status(500).json({ error: "Internal server error" });
     }
 };
