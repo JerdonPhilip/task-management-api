@@ -1,162 +1,158 @@
-import fs from "fs";
-import path from "path";
+// controllers/userController.js
 import bcrypt from "bcrypt";
-import { readJSONAsync, writeJSONAsync } from "../config/database.js";
-import { calculateLevelUp } from "../utils/gameLogic.js";
-import { Dropbox } from "dropbox";
-import fetch from "node-fetch";
+import { supabase } from "../config/supabase.js";
 
-const dataPath = path.resolve("src/data/users.json");
-const isLocal = process.env.NODE_ENV === "development";
-const dbx = !isLocal ? new Dropbox({ accessToken: process.env.DROPBOX_ACCESS_TOKEN, fetch }) : null;
-
+// ---------- REGISTER USER ----------
 export const registerUser = async (req, res) => {
     try {
-        const { username, password } = req.body;
-        const userFile = `${username}_tasks.json`;
+        const { name, password } = req.body;
 
-        const newUser = {
-            username,
-            password,
-            level: 1,
-            experience: 0,
-            gold: 100,
-            health: 100,
-            maxHealth: 100,
-            class: "Novice",
-            completedQuests: 0,
-            tasks: []
-        };
+        console.log("📝 Registration attempt for:", name);
 
-        if (isLocal) {
-            // Local JSON file creation
-            fs.writeFileSync(path.join(dataPath, userFile), JSON.stringify(newUser, null, 2));
-        } else {
-            // Dropbox JSON upload
-            await dbx.filesUpload({
-                path: `/data/${userFile}`,
-                contents: JSON.stringify(newUser, null, 2),
-                mode: { ".tag": "overwrite" }
-            });
+        if (!name || !password) {
+            return res.status(400).json({ error: "Name and password required" });
         }
 
-        res.status(201).json({ message: "User registered", user: newUser });
+        // Check if user already exists
+        const { data: existingUser, error: checkError } = await supabase.from("users").select("id").eq("username", name).single();
+
+        if (checkError && checkError.code !== "PGRST116") {
+            // PGRST116 = no rows returned
+            console.error("❌ Check user error:", checkError);
+            return res.status(500).json({ error: "Database error" });
+        }
+
+        if (existingUser) {
+            return res.status(400).json({ error: "Hero already exists" });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        // Create new user
+        const { data: newUser, error: insertError } = await supabase
+            .from("users")
+            .insert([
+                {
+                    username: name,
+                    name: name,
+                    password_hash: hashedPassword,
+                    level: 1,
+                    experience: 0,
+                    gold: 100,
+                    health: 100,
+                    max_health: 100,
+                    class: "Novice",
+                    completed_quests: 0
+                }
+            ])
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error("❌ Insert user error:", insertError);
+            return res.status(500).json({ error: "Failed to create hero" });
+        }
+
+        console.log("✅ Hero created successfully:", newUser.name);
+        res.status(201).json(newUser);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("❌ Register error:", err);
+        res.status(500).json({ error: "Internal server error" });
     }
 };
 
+// ---------- LOGIN USER ----------
 export const loginUser = async (req, res) => {
     try {
         const { username, password } = req.body;
-        const userFile = `${username}_tasks.json`;
 
-        let userData;
+        console.log("🔐 Login attempt for:", username);
 
-        if (isLocal) {
-            const filePath = path.join(dataPath, userFile);
-            if (!fs.existsSync(filePath)) {
-                return res.status(404).json({ error: "User not found" });
-            }
-            userData = JSON.parse(fs.readFileSync(filePath, "utf8"));
-        } else {
-            try {
-                const file = await dbx.filesDownload({ path: `/data/${userFile}` });
-                const buffer = file.result.fileBinary || file.result.fileBlob;
-                userData = JSON.parse(buffer.toString());
-            } catch {
-                return res.status(404).json({ error: "User not found" });
-            }
+        if (!username || !password) {
+            return res.status(400).json({ error: "Username and password required" });
         }
 
-        if (userData.password !== password) {
-            return res.status(401).json({ error: "Invalid credentials" });
+        // Find user by username
+        const { data: user, error } = await supabase.from("users").select("*").eq("username", username).single();
+
+        if (error) {
+            if (error.code === "PGRST116") {
+                // No user found
+                return res.status(404).json({ error: "User not found" });
+            }
+            console.error("❌ Login query error:", error);
+            return res.status(500).json({ error: "Database error" });
         }
 
-        res.json({ message: "Login successful", user: userData });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-};
-
-export const getUser = async (req, res) => {
-    try {
-        const users = await readJSONAsync("users");
-        const userId = req.params.userId;
-
-        if (!users[userId]) {
+        if (!user) {
             return res.status(404).json({ error: "User not found" });
         }
 
-        res.json(users[userId]);
-    } catch (error) {
+        // Check password
+        const isMatch = await bcrypt.compare(password, user.password_hash);
+        if (!isMatch) {
+            console.log("❌ Invalid password for:", username);
+            return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        // Update last active
+        await supabase.from("users").update({ last_active: new Date().toISOString() }).eq("id", user.id);
+
+        console.log("✅ Login successful for:", username);
+        res.json(user);
+    } catch (err) {
+        console.error("❌ Login error:", err);
         res.status(500).json({ error: "Internal server error" });
     }
 };
 
-export const createUser = async (req, res) => {
+// ---------- GET USER ----------
+export const getUser = async (req, res) => {
     try {
-        const users = await readJSONAsync("users");
         const userId = req.params.userId;
 
-        if (!users[userId]) {
-            users[userId] = {
-                id: userId,
-                name: req.body.name || `Adventurer_${userId}`,
-                level: 1,
-                experience: 0,
-                gold: 100,
-                health: 100,
-                maxHealth: 100,
-                class: "Novice",
-                completedQuests: 0,
-                createdAt: new Date().toISOString(),
-                lastActive: new Date().toISOString()
-            };
-            await writeJSONAsync("users", users);
+        const { data: user, error } = await supabase.from("users").select("*").eq("id", userId).single();
+
+        if (error) {
+            if (error.code === "PGRST116") {
+                return res.status(404).json({ error: "User not found" });
+            }
+            return res.status(500).json({ error: "Database error" });
         }
 
-        res.json(users[userId]);
+        res.json(user);
     } catch (error) {
+        console.error("❌ Get user error:", error);
         res.status(500).json({ error: "Internal server error" });
     }
 };
 
-export const updateUser = (req, res) => {
+// ---------- UPDATE USER ----------
+export const updateUser = async (req, res) => {
     try {
-        const users = readJSON("users");
         const userId = req.params.userId;
+        const updates = req.body;
 
-        if (users[userId]) {
-            users[userId] = {
-                ...users[userId],
-                ...req.body,
-                lastActive: new Date().toISOString()
-            };
-            writeJSON("users", users);
-            res.json(users[userId]);
-        } else {
-            res.status(404).json({ error: "User not found" });
+        const { data: user, error } = await supabase
+            .from("users")
+            .update({
+                ...updates,
+                last_active: new Date().toISOString()
+            })
+            .eq("id", userId)
+            .select()
+            .single();
+
+        if (error) {
+            if (error.code === "PGRST116") {
+                return res.status(404).json({ error: "User not found" });
+            }
+            return res.status(500).json({ error: "Database error" });
         }
-    } catch (error) {
-        res.status(500).json({ error: "Internal server error" });
-    }
-};
 
-export const levelUpUser = (req, res) => {
-    try {
-        const users = readJSON("users");
-        const userId = req.params.userId;
-
-        if (users[userId]) {
-            const updatedUser = calculateLevelUp(users[userId]);
-            users[userId] = updatedUser;
-            writeJSON("users", users);
-            res.json(updatedUser);
-        } else {
-            res.status(404).json({ error: "User not found" });
-        }
+        res.json(user);
     } catch (error) {
+        console.error("❌ Update user error:", error);
         res.status(500).json({ error: "Internal server error" });
     }
 };

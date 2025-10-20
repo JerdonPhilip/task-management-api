@@ -17,7 +17,7 @@ function localRead (fileName) {
     const filePath = path.join(dataDir, `${fileName}.json`);
     if (!fs.existsSync(filePath)) return {};
     const data = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(data);
+    return JSON.parse(data || "{}");
 }
 
 function localWrite (fileName, data) {
@@ -52,7 +52,7 @@ async function dropboxWrite (fileName, data) {
     }
 }
 
-// ---------- EXPORT FUNCTIONS ----------
+// ---------- CORE EXPORTS ----------
 export function readJSON (fileName) {
     if (isLocal) return localRead(fileName);
     throw new Error("readJSON is synchronous; use readJSONAsync in production");
@@ -69,4 +69,23 @@ export async function readJSONAsync (fileName) {
 
 export async function writeJSONAsync (fileName, data) {
     return isLocal ? localWrite(fileName, data) : await dropboxWrite(fileName, data);
+}
+
+// ---------- USER TASKS ----------
+export function readUserTasks (userId) {
+    const fileName = `${userId}_tasks`;
+    return isLocal ? localRead(fileName) : [];
+}
+
+export function writeUserTasks (userId, tasks) {
+    const fileName = `${userId}_tasks`;
+    return isLocal ? localWrite(fileName, tasks) : null;
+}
+
+// ---------- AUTH ----------
+export function validateCredentials (username, password) {
+    const users = isLocal ? localRead("users") : {};
+    const user = users[username];
+    if (!user) return false;
+    return user.password === password;
 }

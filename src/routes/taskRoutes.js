@@ -1,21 +1,20 @@
 import { Router } from "express";
-import { getTasks, createTask, completeTask, deleteTask } from "../controllers/taskController.js";
+import { getTasks, saveTasks, createTask, completeTask, deleteTask } from "../controllers/taskController.js";
 
 const router = Router();
 
-// All task routes are now user-specific
+// User-specific routes
 router.get("/:userId", getTasks);
 router.post("/:userId", saveTasks);
-router.post("/:username", createTask);
+
+// Task operations by username
+router.post("/:username/task", createTask);
 router.put("/:username/:taskId/complete", completeTask);
 router.delete("/:username/:taskId", deleteTask);
 
+// Default test routes
 router.get("/", (req, res) => {
-    res.json({ message: "Get all tasks" });
+    res.json({ message: "Task API is running" });
 });
 
-router.post("/", (req, res) => {
-    const newTask = req.body;
-    res.json({ message: "Task created", task: newTask });
-});
 export default router;
